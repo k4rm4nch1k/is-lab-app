@@ -1,0 +1,34 @@
+## .NET Core / ASP.NET Core
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.vs/
+.vs/
+*.sln.docstates
+
+## Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+build/
+bld/
+[Bb]in/
+[Oo]bj/
+
+## Visual Studio
+.vs/
+*.swp
+*.tmp
+*.tmp_proj
+*.log
+*.tlb
+*.tlh
+*.tmp_proj
+_ReSharper*/
+*.sln.ide/
+*.ide/
