@@ -1,8 +1,7 @@
-using IsLabApp.Models;
-using IsLabApp.Services;
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
 
-Console.WriteLine("Welcome to IsLabApp!");
+app.MapGet("/", () => "Hello from IsLabApp!");
+app.MapGet("/api/notes", () => new[] { "Note 1", "Note 2" });
 
-var noteService = new NoteService();
-var note = noteService.Create("Test", "Hello World");
-Console.WriteLine($"Created note with ID: {note.Id}");
+app.Run();
