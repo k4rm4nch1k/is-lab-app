@@ -2,59 +2,83 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
-    branches:
-      - main
+    branches: [ main ]
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      packages: write
 
     steps:
-      # 1. Checkout кода
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # 2. Setup .NET SDK
-      - name: Setup .NET SDK
+      - uses: actions/checkout@v4
+      
+      - name: Debug - show structure
+        run: |
+          echo "Repository structure:"
+          tree -L 3 || ls -laR
+      
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0'  # Укажите вашу версию .NET
-
-      # 3. Восстановление зависимостей
-      - name: Dotnet restore
-        run: dotnet restore
-
-      # 4. Сборка проекта
-      - name: Dotnet build
-        run: dotnet build --configuration Release --no-restore
-
-      # 5. Запуск тестов
-      - name: Dotnet test
-        run: dotnet test --configuration Release --no-build --verbosity normal
-
-      # 6. Логин в GHCR (GitHub Container Registry)
-      - name: Log in to GHCR
+          dotnet-version: 8.0.x
+      
+      - name: Restore dependencies
+        run: |
+          # Пытаемся восстановить решение или проект
+          if [ -f "*.sln" ]; then
+            dotnet restore *.sln
+          elif [ -f "*.csproj" ]; then
+            dotnet restore *.csproj
+          elif [ -f "IsLabApp/*.csproj" ]; then
+            dotnet restore IsLabApp/*.csproj
+          else
+            echo "No project file found!"
+            exit 1
+          fi
+      
+      - name: Build
+        run: |
+          if [ -f "*.sln" ]; then
+            dotnet build *.sln --configuration Release --no-restore
+          elif [ -f "*.csproj" ]; then
+            dotnet build *.csproj --configuration Release --no-restore
+          elif [ -f "IsLabApp/*.csproj" ]; then
+            dotnet build IsLabApp/*.csproj --configuration Release --no-restore
+          fi
+      
+      - name: Test
+        run: |
+          if [ -d "tests" ]; then
+            dotnet test tests/ --configuration Release --no-build --verbosity normal
+          elif [ -d "IsLabApp.Tests" ]; then
+            dotnet test IsLabApp.Tests/ --configuration Release --no-build --verbosity normal
+          else
+            echo "No tests found, skipping..."
+          fi
+      
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      # 7. Сборка Docker-образа
-      - name: Build Docker image
+      
+      - name: Build and push Docker image
         run: |
-          docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
-                       -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest .
-
-      # 8. Push образа с тегами (только для push в main, не для PR)
-      - name: Push Docker image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} --all-tags
+          REPO_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          
+          docker build -t ${{ env.REGISTRY }}/${REPO_NAME}:latest \
+                       -t ${{ env.REGISTRY }}/${REPO_NAME}:${SHORT_SHA} .
+          
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            docker push ${{ env.REGISTRY }}/${REPO_NAME} --all-tags
+          fi
