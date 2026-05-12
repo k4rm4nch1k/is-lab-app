@@ -2,68 +2,58 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-test:
+  build-and-push:
     runs-on: ubuntu-latest
-    
-    permissions:
-      contents: read
-      packages: write
-      
+
     steps:
+      # 1. Checkout кода
       - name: Checkout repository
         uses: actions/checkout@v4
-      
-      - name: Setup .NET
+
+      # 2. Setup .NET SDK
+      - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0'
-      
-      # Найти csproj файл автоматически
-      - name: Find csproj file
-        id: find_csproj
-        run: |
-          CSPROJ=$(find . -maxdepth 3 -name "*.csproj" ! -name "*Tests*" | head -1)
-          echo "csproj_path=$CSPROJ" >> $GITHUB_OUTPUT
-          echo "Found csproj at: $CSPROJ"
-      
-      - name: Restore dependencies
-        run: dotnet restore ${{ steps.find_csproj.outputs.csproj_path }}
-      
-      - name: Build
-        run: dotnet build ${{ steps.find_csproj.outputs.csproj_path }} --no-restore --configuration Release
-      
-      - name: Test
-        run: |
-          TEST_PROJECTS=$(find . -name "*Tests*.csproj" -depth 1 2>/dev/null || true)
-          if [ -n "$TEST_PROJECTS" ]; then
-            dotnet test $TEST_PROJECTS --no-build --configuration Release
-          else
-            echo "No test projects found, skipping tests"
-          fi
-      
-      - name: Log in to GitHub Container Registry
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+          dotnet-version: '8.0'  # Укажите вашу версию .NET
+
+      # 3. Восстановление зависимостей
+      - name: Dotnet restore
+        run: dotnet restore
+
+      # 4. Сборка проекта
+      - name: Dotnet build
+        run: dotnet build --configuration Release --no-restore
+
+      # 5. Запуск тестов
+      - name: Dotnet test
+        run: dotnet test --configuration Release --no-build --verbosity normal
+
+      # 6. Логин в GHCR (GitHub Container Registry)
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      
+
+      # 7. Сборка Docker-образа
       - name: Build Docker image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-                       -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
-      
+          docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+                       -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest .
+
+      # 8. Push образа с тегами (только для push в main, не для PR)
       - name: Push Docker image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
